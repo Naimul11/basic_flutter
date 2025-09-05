@@ -259,12 +259,14 @@ class _RegisterState extends State<Register> {
                         }
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color.fromARGB(
-                          255,
-                          75,
-                          173,
-                          137,
-                        ),
+                        backgroundColor: _uniVerified == true
+                            ? const Color.fromARGB(
+                                255,
+                                0,
+                                161,
+                                115,
+                              ) 
+                            : const Color.fromARGB(182, 6, 148, 51),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 20,
                           vertical: 5,
@@ -275,9 +277,9 @@ class _RegisterState extends State<Register> {
                         ),
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                      child: const Text(
-                        'Verify Profile',
-                        style: TextStyle(
+                      child: Text(
+                        _uniVerified == true ? 'Verified' : 'Verify Profile',
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 17,
                           fontWeight: FontWeight.bold,
@@ -285,6 +287,7 @@ class _RegisterState extends State<Register> {
                       ),
                     ),
                   ),
+
                   const SizedBox(height: 16),
 
                   // Register Button
@@ -313,6 +316,10 @@ class _RegisterState extends State<Register> {
                         }
 
                         try {
+                          final user = FirebaseAuth.instance.currentUser;
+                          if (user != null) {
+                            await user.updatePassword(_password.text);
+                          }
                           final uid = _uid;
                           if (uid == null) throw Exception('UID missing');
 

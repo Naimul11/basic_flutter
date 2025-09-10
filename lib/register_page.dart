@@ -73,7 +73,7 @@ class _RegisterState extends State<Register> {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
         setState(() => _loadingGoogle = false);
-        return; // User cancelled
+        return;
       }
 
       final GoogleSignInAuthentication googleAuth =
@@ -88,7 +88,7 @@ class _RegisterState extends State<Register> {
         credential,
       );
 
-      _uid = userCredential.user!.uid;
+      _uid = userCredential.user!.uid; //user id
       setState(() {
         _emailVerified = true;
         _loadingGoogle = false;

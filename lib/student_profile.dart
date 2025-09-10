@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:basic_flutter/student_class_details.dart';
 import 'package:basic_flutter/sub_pages/firebase_options.dart';
 import 'package:basic_flutter/sub_pages/menu_button.dart';
 import 'package:basic_flutter/sub_pages/profile_card.dart';
@@ -51,7 +54,10 @@ class StudentProfile extends StatelessWidget {
 
     try {
       // Fetch student's section
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
       final userSection = userDoc.data()?['section'] ?? '';
 
       // Check global collection for class
@@ -245,8 +251,12 @@ class StudentProfile extends StatelessWidget {
 
                                 // Convert "HH:mm" -> "h:mm a"
                                 try {
-                                  final time = DateFormat("HH:mm").parse(rawTime);
-                                  displayTime = DateFormat("h:mm a").format(time);
+                                  final time = DateFormat(
+                                    "HH:mm",
+                                  ).parse(rawTime);
+                                  displayTime = DateFormat(
+                                    "h:mm a",
+                                  ).format(time);
                                 } catch (_) {
                                   // fallback if parsing fails
                                 }
@@ -256,12 +266,7 @@ class StudentProfile extends StatelessWidget {
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                     side: const BorderSide(
-                                      color: Color.fromARGB(
-                                        255,
-                                        0,
-                                        161,
-                                        115,
-                                      ),
+                                      color: Color.fromARGB(255, 0, 161, 115),
                                       width: 2,
                                     ),
                                   ),
@@ -279,7 +284,18 @@ class StudentProfile extends StatelessWidget {
                                       size: 16,
                                     ),
                                     onTap: () {
-                                      // TODO: Navigate to class details
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              StudentClassPage(
+                                                classCode: data['code'],
+                                                userId: FirebaseAuth
+                                                    .instance
+                                                    .currentUser!
+                                                    .uid,
+                                              ),
+                                        ),
+                                      );
                                     },
                                   ),
                                 );

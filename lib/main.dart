@@ -1,4 +1,3 @@
-import 'package:basic_flutter/teacher_class_details.dart';
 import 'package:basic_flutter/create_class.dart';
 import 'package:basic_flutter/login_page.dart';
 import 'package:basic_flutter/register_page.dart';

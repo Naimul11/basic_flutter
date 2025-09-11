@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:basic_flutter/student_class_details.dart';
 import 'package:basic_flutter/sub_pages/firebase_options.dart';
 import 'package:basic_flutter/sub_pages/menu_button.dart';
@@ -192,8 +190,13 @@ class StudentProfile extends StatelessWidget {
                             Expanded(
                               child: ElevatedButton.icon(
                                 onPressed: () {
-                                  // TODO: Open QR scanner
+                                  // Navigator.of(context).push(
+                                  //   MaterialPageRoute(
+                                  //     builder: (context) => const QRScanPage(),
+                                  //   ),
+                                  // );
                                 },
+
                                 icon: const Icon(Icons.qr_code_scanner),
                                 label: const Text("Scan QR"),
                                 style: ElevatedButton.styleFrom(

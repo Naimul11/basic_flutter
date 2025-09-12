@@ -89,7 +89,8 @@ class QRManager {
       final date = DateFormat('yyyy-MM-dd').format(now);
       final qrId = const Uuid().v4();
       final expiresAt = now.add(
-        expirationDuration ?? const Duration(minutes: 2),
+        expirationDuration ??
+            const Duration(minutes: 2), // if class_details failed to pass.
       );
       final docId = generateDocId(classCode, section);
 
@@ -123,6 +124,13 @@ class QRManager {
           "date": date,
           "docId": docId,
           "isActive": true,
+        });
+
+        //create empty "students" subcollection
+        final studentsRef = attendanceRef.collection("students");
+
+        await studentsRef.doc("_init").set({
+          "createdAt": FieldValue.serverTimestamp(),
         });
       }
 

@@ -1,3 +1,4 @@
+import 'package:basic_flutter/teacher_class_details.dart';
 import 'package:basic_flutter/sub_pages/firebase_options.dart';
 import 'package:basic_flutter/sub_pages/menu_button.dart';
 import 'package:basic_flutter/sub_pages/profile_card.dart';
@@ -118,8 +119,9 @@ class TeacherProfile extends StatelessWidget {
                           return const Center(
                             child: Text(
                               "No classes created yet",
-                              style:
-                                  TextStyle(color: Color.fromARGB(255, 80, 80, 80)),
+                              style: TextStyle(
+                                color: Color.fromARGB(255, 80, 80, 80),
+                              ),
                             ),
                           );
                         }
@@ -129,10 +131,12 @@ class TeacherProfile extends StatelessWidget {
                           final aTime = a['startTime'] ?? '';
                           final bTime = b['startTime'] ?? '';
                           try {
-                            final aParsed =
-                                DateFormat("HH:mm").parse(aTime.toString());
-                            final bParsed =
-                                DateFormat("HH:mm").parse(bTime.toString());
+                            final aParsed = DateFormat(
+                              "HH:mm",
+                            ).parse(aTime.toString());
+                            final bParsed = DateFormat(
+                              "HH:mm",
+                            ).parse(bTime.toString());
                             return aParsed.compareTo(bParsed);
                           } catch (_) {
                             return 0;
@@ -172,8 +176,17 @@ class TeacherProfile extends StatelessWidget {
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(16),
                                 onTap: () {
-                                  // TODO: Navigate to class details
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) => TeacherClassPage(
+                                        classCode:
+                                            classData['code'], // code stored in Firestore
+                                        userId: userId, // current teacher uid
+                                      ),
+                                    ),
+                                  );
                                 },
+
                                 child: Padding(
                                   padding: const EdgeInsets.all(16.0),
                                   child: Stack(
@@ -228,7 +241,11 @@ class TeacherProfile extends StatelessWidget {
                                               fontSize: 14,
                                               fontWeight: FontWeight.bold,
                                               color: Color.fromARGB(
-                                                  226, 188, 3, 3),
+                                                226,
+                                                188,
+                                                3,
+                                                3,
+                                              ),
                                             ),
                                           ),
                                         ),

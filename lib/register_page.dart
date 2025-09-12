@@ -70,10 +70,16 @@ class _RegisterState extends State<Register> {
   Future<void> verifyWithGoogle() async {
     setState(() => _loadingGoogle = true);
     try {
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      final googleSignIn = GoogleSignIn();
+
+      await googleSignIn.signOut();
+      // ignore: body_might_complete_normally_catch_error
+      await googleSignIn.disconnect().catchError((_) {});
+
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) {
         setState(() => _loadingGoogle = false);
-        return; // User cancelled
+        return;
       }
 
       final GoogleSignInAuthentication googleAuth =
@@ -89,8 +95,10 @@ class _RegisterState extends State<Register> {
       );
 
       _uid = userCredential.user!.uid;
+
       setState(() {
-        _emailVerified = true;
+        _email.text = googleUser.email; // auto-fill email
+        _emailVerified = true; // mark verified
         _loadingGoogle = false;
       });
 
@@ -184,6 +192,8 @@ class _RegisterState extends State<Register> {
                   // Email with Google Verify Button inside
                   TextField(
                     controller: _email,
+                    readOnly:
+                        _emailVerified, //  make email read-only once verified
                     keyboardType: TextInputType.emailAddress,
                     enableSuggestions: false,
                     decoration: inputDecoration('Enter your Email').copyWith(
@@ -225,7 +235,7 @@ class _RegisterState extends State<Register> {
                     child: passwordField(
                       controller: _cpassword,
                       hintText: _emailVerified
-                          ? 'Enter your Password'
+                          ? 'Confirm your Password'
                           : 'Verify your email first',
                     ),
                   ),
@@ -348,20 +358,35 @@ class _RegisterState extends State<Register> {
                           if (uid == null) throw Exception('UID missing');
                           final deviceId = await getAndroidDeviceId();
 
+                          // Check if email already exists
+                          final existingUser = await FirebaseFirestore.instance
+                              .collection('users')
+                              .where('email', isEqualTo: _email.text.trim())
+                              .get();
+
+                          if (existingUser.docs.isNotEmpty) {
+                            await showError(
+                              context,
+                              'This email is already registered',
+                            );
+                            return;
+                          }
+
+                          // Save new user
                           await FirebaseFirestore.instance
                               .collection('users')
                               .doc(uid)
                               .set({
-                                'name': _name.text,
-                                'email': _email.text,
+                                'name': _name.text.trim(),
+                                'email': _email.text.trim(),
                                 'studentId': _studentId,
                                 'userType': userType,
-                                'section': _section.text,
+                                'section': _section.text.trim(),
                                 'verified': _uniVerified,
                                 'DeviceId': deviceId,
                               });
                         } catch (e) {
-                          await showError(context, 'Registration Failed');
+                          await showError(context, 'Registration Failed: $e');
                           return;
                         }
 

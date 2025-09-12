@@ -42,6 +42,9 @@ dependencies:
   google_sign_in: ^6.1.0
   intl: ^0.20.2
   shared_preferences: ^2.5.3
+  qr_flutter: ^4.0.0
+  uuid: ^4.5.1
+  mobile_scanner: ^7.0.1
 
 dev_dependencies:
   flutter_test:
@@ -100,3 +103,5 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+

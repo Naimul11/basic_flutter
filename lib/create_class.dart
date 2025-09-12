@@ -43,6 +43,7 @@ class _CreateClassPageState extends State<CreateClassPage> {
 
       String classCode = await generateUniqueClassCode();
 
+      // firebase data write
       final userClasses = FirebaseFirestore.instance
           .collection("users")
           .doc(user.uid)
@@ -75,6 +76,12 @@ class _CreateClassPageState extends State<CreateClassPage> {
 
       // Save globally
       await globalClasses.doc(classCode).set(classData);
+      final initialAttendance = {
+        "initializedAt": FieldValue.serverTimestamp(),
+        "note": "Attendance subcollection created",
+      };
+
+      globalClasses.doc(classCode).collection("attendance").doc("init").set(initialAttendance);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

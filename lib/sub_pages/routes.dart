@@ -6,4 +6,3 @@ const student = '/student/';
 const teacher = '/teacher/';
 const lostdevice = '/lostdevice/';
 const createclass = '/createclass/';
-const joinclass = '/joinclass/';

@@ -2,7 +2,6 @@ import 'package:basic_flutter/student_class_details.dart';
 import 'package:basic_flutter/sub_pages/firebase_options.dart';
 import 'package:basic_flutter/sub_pages/menu_button.dart';
 import 'package:basic_flutter/sub_pages/profile_card.dart';
-import 'package:basic_flutter/sub_pages/scan/scan_qr.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -191,11 +190,11 @@ class StudentProfile extends StatelessWidget {
                             Expanded(
                               child: ElevatedButton.icon(
                                 onPressed: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (context) => const QRScanPage(),
-                                    ),
-                                  );
+                                  // Navigator.of(context).push(
+                                  //   MaterialPageRoute(
+                                  //     builder: (context) => const QRScanPage(),
+                                  //   ),
+                                  // );
                                 },
 
                                 icon: const Icon(Icons.qr_code_scanner),

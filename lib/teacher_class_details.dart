@@ -1,9 +1,10 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:basic_flutter/sub_pages/qr/qr_display.dart';
+import 'package:basic_flutter/sub_pages/qr/qr_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart';
 
 class TeacherClassPage extends StatefulWidget {
   final String classCode;
@@ -25,10 +26,46 @@ class _TeacherClassPageState extends State<TeacherClassPage> {
   bool _hasQRToday = false;
   Map<String, dynamic>? _classData;
   Map<String, dynamic>? _todaysQRData;
+  bool _hasCheckedTodaysQR = false;
+  Timer? _expirationTimer;
 
   @override
   void initState() {
     super.initState();
+    // Start a timer to check for expired QRs every minute
+    _expirationTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
+      if (_hasQRToday && _todaysQRData != null) {
+        _checkIfCurrentQRExpired();
+      }
+    });
+    
+  }
+
+  @override
+  void dispose() {
+    _expirationTimer?.cancel();
+    super.dispose();
+  }
+  
+
+  Future<void> _checkIfCurrentQRExpired() async {
+    if (_todaysQRData == null || _classData == null) return;
+
+    final expiresAt = _todaysQRData!['expiresAt'] as DateTime;
+
+    if (QRManager.isQRExpired(expiresAt)) {
+      // QR has expired, delete it and update UI
+      final docId = _todaysQRData!['docId'] as String;
+      await QRManager.deleteExpiredQR(widget.classCode, docId);
+
+      if (mounted) {
+        setState(() {
+          _hasQRToday = false;
+          _todaysQRData = null;
+          _canCreateQR = true;
+        });
+      }
+    }
   }
 
   Future<Map<String, dynamic>?> getClassDetails() async {
@@ -41,62 +78,46 @@ class _TeacherClassPageState extends State<TeacherClassPage> {
 
     final data = doc.data();
     _classData = data;
+
+    // Check today's QR immediately after getting class data
+    if (!_hasCheckedTodaysQR && data != null) {
+      await _checkTodaysQR();
+      _hasCheckedTodaysQR = true;
+    }
+
     return data;
   }
 
   Future<void> _checkTodaysQR() async {
     if (_classData == null) return;
-    
-    setState(() {
-      _isLoading = true;
-    });
 
     try {
-      final now = DateTime.now();
-      final date = DateFormat('yyyy-MM-dd').format(now);
-      final section = _classData!['section'];
+      final section = _classData!['section'] ?? '';
+      final qrData = await QRManager.checkTodaysQR(widget.classCode, section);
 
-      final attendanceDoc = await FirebaseFirestore.instance
-          .collection("global")
-          .doc("classes")
-          .collection("allClasses")
-          .doc(widget.classCode)
-          .collection("attendance")
-          .doc(date)
-          .get();
-
-      if (attendanceDoc.exists) {
-        final data = attendanceDoc.data()!;
-        final expiresAt = (data['expiresAt'] as Timestamp).toDate();
-        final qrSection = data['section'] ?? '';
-
-        // QR exists for today
+      if (qrData != null) {
+        // Valid QR exists
         _hasQRToday = true;
-        _todaysQRData = {
-          'qrId': data['qrId'],
-          'expiresAt': expiresAt,
-          'section': qrSection,
-          'classCode': widget.classCode,
-          'date': date,
-        };
-
-        // Check if we can create new QR (if current one expired)
-        _canCreateQR = expiresAt.isBefore(now);
+        _todaysQRData = qrData;
+        _canCreateQR = false;
       } else {
+        // No valid QR found (either doesn't exist or was expired and deleted)
         _hasQRToday = false;
         _todaysQRData = null;
         _canCreateQR = true;
       }
 
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {});
+      }
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _hasQRToday = false;
-        _canCreateQR = true;
-      });
+      // On error, assume no QR exists and allow creation
+      _hasQRToday = false;
+      _todaysQRData = null;
+      _canCreateQR = true;
+      if (mounted) {
+        setState(() {});
+      }
     }
   }
 
@@ -107,96 +128,109 @@ class _TeacherClassPageState extends State<TeacherClassPage> {
       _isLoading = true;
     });
 
-    final now = DateTime.now();
-    final date = DateFormat('yyyy-MM-dd').format(now);
-    final qrId = const Uuid().v4();
-    final expiresAt = now.add(const Duration(hours: 1));
     final section = _classData!['section'] ?? '';
 
-    final qrData = {
-      'classCode': widget.classCode,
-      'date': date,
-      'section': section,
-      'qrId': qrId,
-      'createdAt': now.millisecondsSinceEpoch,
-      'expiresAt': expiresAt.millisecondsSinceEpoch,
-    };
-    final qrString = jsonEncode(qrData);
-
     try {
-      // Create attendance session in Firestore
-      final attendanceRef = FirebaseFirestore.instance
-          .collection("global")
-          .doc("classes")
-          .collection("allClasses")
-          .doc(widget.classCode)
-          .collection("attendance")
-          .doc(date);
+      // First check if there's an expired QR that needs cleanup
+      await _checkTodaysQR();
 
-      await attendanceRef.set({
-        "qrId": qrId,
-        "section": section,
-        "createdAt": FieldValue.serverTimestamp(),
-        "expiresAt": Timestamp.fromDate(expiresAt),
-        "date": date,
-        "isActive": true,
-      }, SetOptions(merge: true));
-
-      // Update local state
-      _hasQRToday = true;
-      _canCreateQR = false;
-      _todaysQRData = {
-        'qrId': qrId,
-        'expiresAt': expiresAt,
-        'section': section,
-        'classCode': widget.classCode,
-        'date': date,
-      };
-
-      setState(() {
-        _isLoading = false;
-      });
-
-      // Navigate to QR display page
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => QRDisplayPage(
-            qrData: qrString,
-            expiresAt: expiresAt,
-            classCode: widget.classCode,
-            section: section,
+      // Only proceed if we can create a QR
+      if (!_canCreateQR) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("A QR code already exists for today."),
+            backgroundColor: Colors.orange,
           ),
-        ),
+        );
+        return;
+      }
+
+      final qrResult = await QRManager.createQR(
+        classCode: widget.classCode,
+        section: section,
+        expirationDuration: const Duration(minutes: 2),
       );
+
+      if (qrResult != null) {
+        // Update local state
+        _hasQRToday = true;
+        _canCreateQR = false;
+        _todaysQRData = qrResult;
+
+        setState(() {
+          _isLoading = false;
+        });
+
+        // Navigate to QR display page
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => QRDisplayPage(
+              qrData: qrResult['qrString'] as String,
+              expiresAt: qrResult['expiresAt'] as DateTime,
+              classCode: widget.classCode,
+              section: section,
+            ),
+          ),
+        );
+      } else {
+        throw Exception("Failed to create QR");
+      }
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error creating QR: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error creating QR: $e")));
     }
   }
 
-  void _viewQR() {
+  void _viewQR() async {
     if (_todaysQRData == null || _classData == null) return;
 
-    final qrData = {
-      'classCode': widget.classCode,
-      'date': _todaysQRData!['date'],
-      'section': _classData!['section'] ?? '',
-      'qrId': _todaysQRData!['qrId'],
-      'createdAt': DateTime.now().millisecondsSinceEpoch,
-      'expiresAt': (_todaysQRData!['expiresAt'] as DateTime).millisecondsSinceEpoch,
-    };
+    // Check if QR is expired before viewing
+    final expiresAt = _todaysQRData!['expiresAt'] as DateTime;
+
+    if (QRManager.isQRExpired(expiresAt)) {
+      // QR is expired, clean it up
+      final docId = _todaysQRData!['docId'] as String;
+      await QRManager.deleteExpiredQR(widget.classCode, docId);
+
+      if (mounted) {
+        setState(() {
+          _hasQRToday = false;
+          _todaysQRData = null;
+          _canCreateQR = true;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("QR code has expired. Please create a new one."),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    final qrData = QRManager.getQRData(
+      classCode: widget.classCode,
+      section: _classData!['section'] ?? '',
+      qrId: _todaysQRData!['qrId'],
+      expiresAt: expiresAt,
+      date: _todaysQRData!['date'],
+    );
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => QRDisplayPage(
           qrData: jsonEncode(qrData),
-          expiresAt: _todaysQRData!['expiresAt'] as DateTime,
+          expiresAt: expiresAt,
           classCode: widget.classCode,
           section: _classData!['section'] ?? '',
         ),
@@ -234,14 +268,6 @@ class _TeacherClassPageState extends State<TeacherClassPage> {
             final parsedTime = DateFormat("HH:mm").parse(time);
             formattedTime = DateFormat.jm().format(parsedTime);
           } catch (_) {}
-
-          // Check for today's QR after getting class data
-          if (_classData == null) {
-            _classData = data;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _checkTodaysQR();
-            });
-          }
 
           return Padding(
             padding: const EdgeInsets.all(20),
@@ -319,7 +345,9 @@ class _TeacherClassPageState extends State<TeacherClassPage> {
                         icon: Icons.qr_code,
                         label: "Create QR",
                         color: Colors.orange,
-                        onPressed: _canCreateQR && !_isLoading ? _createQR : null,
+                        onPressed: _canCreateQR && !_isLoading
+                            ? _createQR
+                            : null,
                         enabled: _canCreateQR && !_isLoading,
                       ),
                     ),
@@ -373,15 +401,20 @@ class _TeacherClassPageState extends State<TeacherClassPage> {
     required String label,
     required Color color,
     required VoidCallback? onPressed,
-    bool enabled = true,
+    bool? enabled,
   }) {
+    final isEnabled = enabled ?? (onPressed != null);
+
     return ElevatedButton.icon(
-      onPressed: enabled ? onPressed : null,
+      onPressed: onPressed,
       icon: _isLoading && onPressed != null
           ? const SizedBox(
               width: 20,
               height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
             )
           : Icon(icon, size: 26),
       label: Text(
@@ -389,12 +422,14 @@ class _TeacherClassPageState extends State<TeacherClassPage> {
         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
       ),
       style: ElevatedButton.styleFrom(
-        backgroundColor: enabled ? color : Colors.grey.shade400,
+        backgroundColor: isEnabled ? color : Colors.grey,
         foregroundColor: Colors.white,
         minimumSize: const Size.fromHeight(60),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        elevation: enabled ? 5 : 0,
-        shadowColor: enabled ? color.withValues(alpha: 0.5) : Colors.transparent,
+        elevation: isEnabled ? 5 : 1,
+        shadowColor: isEnabled
+            ? color.withValues(alpha: 0.5)
+            : Colors.grey.withValues(alpha: 0.3),
       ),
     );
   }

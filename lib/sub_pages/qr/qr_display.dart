@@ -35,7 +35,7 @@ class _QRDisplayPageState extends State<QRDisplayPage> {
     if (widget.expiresAt != null) {
       final now = DateTime.now();
       _isExpired = widget.expiresAt!.isBefore(now);
-      
+
       if (_isExpired) {
         _deactivateQR();
       }
@@ -44,16 +44,20 @@ class _QRDisplayPageState extends State<QRDisplayPage> {
 
   Future<void> _deactivateQR() async {
     if (widget.classCode == null || widget.expiresAt == null) return;
-    
+
     try {
-      final date = widget.expiresAt!.toIso8601String().substring(0, 10);
+      // Create the same unique document ID format
+      final date = DateFormat('yyyy-MM-dd').format(widget.expiresAt!);
+      final section = widget.section ?? '';
+      final docId = "${date}_${widget.classCode}_$section";
+
       await FirebaseFirestore.instance
           .collection("global")
           .doc("classes")
           .collection("allClasses")
           .doc(widget.classCode!)
           .collection("attendance")
-          .doc(date)
+          .doc(docId)
           .update({'isActive': false});
     } catch (e) {
       print("Error deactivating QR: $e");
@@ -63,7 +67,7 @@ class _QRDisplayPageState extends State<QRDisplayPage> {
   @override
   Widget build(BuildContext context) {
     final bool isValidData = widget.qrData.trim().isNotEmpty;
-    
+
     // Handle backward compatibility for simple QR data
     Map<String, dynamic> qrDataMap = {};
     try {
@@ -130,12 +134,12 @@ class _QRDisplayPageState extends State<QRDisplayPage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    
+
                     // Status Card
                     Card(
                       elevation: 4,
-                      color: _isExpired 
-                          ? Colors.red.shade100 
+                      color: _isExpired
+                          ? Colors.red.shade100
                           : Colors.green.shade100,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -164,7 +168,7 @@ class _QRDisplayPageState extends State<QRDisplayPage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    
+
                     // QR Code
                     Card(
                       elevation: 4,
@@ -210,7 +214,7 @@ class _QRDisplayPageState extends State<QRDisplayPage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    
+
                     // Instructions
                     if (!_isExpired)
                       const Card(

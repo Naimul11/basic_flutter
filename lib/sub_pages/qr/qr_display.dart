@@ -24,11 +24,16 @@ class QRDisplayPage extends StatefulWidget {
 
 class _QRDisplayPageState extends State<QRDisplayPage> {
   bool _isExpired = false;
+  Map<String, dynamic>? _classData;
+  String? _classCodeFromQR;
+  String? _dateFromQR;
 
   @override
   void initState() {
     super.initState();
     _checkIfExpired();
+    _parseQRData();
+    _fetchClassInfo();
   }
 
   void _checkIfExpired() {
@@ -42,20 +47,52 @@ class _QRDisplayPageState extends State<QRDisplayPage> {
     }
   }
 
-  Future<void> _deactivateQR() async {
-    if (widget.classCode == null || widget.expiresAt == null) return;
+  void _parseQRData() {
+    try {
+      final qrDataMap = jsonDecode(widget.qrData);
+      _classCodeFromQR = qrDataMap['classCode'];
+      _dateFromQR = qrDataMap['date'];
+    } catch (e) {
+      // fallback: treat as simple string QR
+      _classCodeFromQR = widget.qrData;
+      _dateFromQR = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    }
+  }
+
+  Future<void> _fetchClassInfo() async {
+    if (_classCodeFromQR == null || _classCodeFromQR!.isEmpty) return;
 
     try {
-      // Create the same unique document ID format
+      final docSnap = await FirebaseFirestore.instance
+          .collection("global")
+          .doc("classes")
+          .collection("allClasses")
+          .doc(_classCodeFromQR!)
+          .get();
+
+      if (docSnap.exists) {
+        setState(() {
+          _classData = docSnap.data();
+        });
+      }
+    } catch (e) {
+      print("Error fetching class info: $e");
+    }
+  }
+
+  Future<void> _deactivateQR() async {
+    if (_classCodeFromQR == null || widget.expiresAt == null) return;
+
+    try {
       final date = DateFormat('yyyy-MM-dd').format(widget.expiresAt!);
       final section = widget.section ?? '';
-      final docId = "${date}_${widget.classCode}_$section";
+      final docId = "${date}_${_classCodeFromQR}_$section";
 
       await FirebaseFirestore.instance
           .collection("global")
           .doc("classes")
           .collection("allClasses")
-          .doc(widget.classCode!)
+          .doc(_classCodeFromQR!)
           .collection("attendance")
           .doc(docId)
           .update({'isActive': false});
@@ -67,19 +104,6 @@ class _QRDisplayPageState extends State<QRDisplayPage> {
   @override
   Widget build(BuildContext context) {
     final bool isValidData = widget.qrData.trim().isNotEmpty;
-
-    // Handle backward compatibility for simple QR data
-    Map<String, dynamic> qrDataMap = {};
-    try {
-      qrDataMap = jsonDecode(widget.qrData);
-    } catch (e) {
-      // If it's just a simple string (like classCode), create a basic structure
-      qrDataMap = {
-        'classCode': widget.qrData,
-        'section': widget.section ?? '',
-        'date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
-      };
-    }
 
     return Scaffold(
       appBar: AppBar(
@@ -95,47 +119,42 @@ class _QRDisplayPageState extends State<QRDisplayPage> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Class Info Card
                     Card(
                       elevation: 4,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Padding(
+                      child: Container(
+                        width: double.infinity,
                         padding: const EdgeInsets.all(16),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  "Class: ${qrDataMap['classCode']}",
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  "Section: ${qrDataMap['section']}",
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ],
+                            Text(
+                              "Class: ${_classData?['name'] ?? 'Loading...'}",
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              "Date: ${qrDataMap['date']}",
+                              "Section: ${_classData?['section'] ?? 'Loading...'}",
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              "Date: ${_dateFromQR ?? 'Loading...'}",
                               style: const TextStyle(fontSize: 16),
                             ),
                           ],
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 20),
 
-                    // Status Card
+                    //  Status Card
                     Card(
                       elevation: 4,
                       color: _isExpired
@@ -179,14 +198,14 @@ class _QRDisplayPageState extends State<QRDisplayPage> {
                         padding: const EdgeInsets.all(20),
                         child: _isExpired
                             ? Column(
-                                children: [
-                                  const Icon(
+                                children: const [
+                                  Icon(
                                     Icons.qr_code_scanner,
                                     size: 100,
                                     color: Colors.grey,
                                   ),
-                                  const SizedBox(height: 16),
-                                  const Text(
+                                  SizedBox(height: 16),
+                                  Text(
                                     "QR Code Expired",
                                     style: TextStyle(
                                       fontSize: 18,
@@ -194,8 +213,8 @@ class _QRDisplayPageState extends State<QRDisplayPage> {
                                       color: Colors.grey,
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
-                                  const Text(
+                                  SizedBox(height: 8),
+                                  Text(
                                     "Please generate a new QR code",
                                     style: TextStyle(
                                       fontSize: 14,
@@ -215,7 +234,7 @@ class _QRDisplayPageState extends State<QRDisplayPage> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Instructions
+                    //  Instructions
                     if (!_isExpired)
                       const Card(
                         elevation: 2,

@@ -137,8 +137,8 @@ class QRManager {
       final qrData = {
         'classCode': classCode,
         'date': date,
+        'docId': docId,
         'section': section,
-        'qrId': qrId,
         'createdAt': now.millisecondsSinceEpoch,
         'expiresAt': expiresAt.millisecondsSinceEpoch,
       };

@@ -1,3 +1,4 @@
+import 'package:basic_flutter/sub_pages/qr_scanner/scanner.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -120,11 +121,11 @@ class StudentClassPage extends StatelessWidget {
                   color: Colors.orange,
                   label: "Scan",
                   onPressed: () {
-                    // Navigator.of(context).push(
-                    //   MaterialPageRoute(
-                    //     builder: (context) => const QRScanPage(),
-                    //   ),
-                    // );
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const QrScanner(),
+                      ),
+                    );
                   },
                 ),
                 const SizedBox(height: 20),

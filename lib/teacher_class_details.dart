@@ -34,7 +34,7 @@ class _TeacherClassPageState extends State<TeacherClassPage> {
     super.initState();
     _loadData();
     _refreshTimer = Timer.periodic(
-      const Duration(minutes: 2),
+      const Duration(minutes: 2),// refreash time 
       (_) => _refreshData(),
     );
   }
@@ -97,7 +97,7 @@ class _TeacherClassPageState extends State<TeacherClassPage> {
       final qrResult = await QRManager.createQR(
         classCode: widget.classCode,
         section: _classData!['section'] ?? '',
-        expirationDuration: const Duration(minutes: 2),
+        expirationDuration: const Duration(minutes: 2), // qr code expire time.
       );
 
       if (qrResult != null) {

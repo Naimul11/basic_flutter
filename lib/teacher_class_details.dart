@@ -21,158 +21,100 @@ class TeacherClassPage extends StatefulWidget {
 }
 
 class _TeacherClassPageState extends State<TeacherClassPage> {
-  bool _isLoading = false;
+  bool _isLoading = true;
+  bool _isCreatingQR = false;
   bool _canCreateQR = true;
   bool _hasQRToday = false;
   Map<String, dynamic>? _classData;
   Map<String, dynamic>? _todaysQRData;
-  bool _hasCheckedTodaysQR = false;
-  Timer? _expirationTimer;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
-    // Start a timer to check for expired QRs every minute
-    _expirationTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
-      if (_hasQRToday && _todaysQRData != null) {
-        _checkIfCurrentQRExpired();
-      }
-    });
-    
+    _loadData();
+    _refreshTimer = Timer.periodic(
+      const Duration(minutes: 2),
+      (_) => _refreshData(),
+    );
   }
 
   @override
   void dispose() {
-    _expirationTimer?.cancel();
+    _refreshTimer?.cancel();
     super.dispose();
   }
-  
 
-  Future<void> _checkIfCurrentQRExpired() async {
-    if (_todaysQRData == null || _classData == null) return;
+  Future<void> _loadData() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('global')
+          .doc('classes')
+          .collection('allClasses')
+          .doc(widget.classCode)
+          .get();
 
-    final expiresAt = _todaysQRData!['expiresAt'] as DateTime;
-
-    if (QRManager.isQRExpired(expiresAt)) {
-      // QR has expired, delete it and update UI
-      final docId = _todaysQRData!['docId'] as String;
-      await QRManager.deleteExpiredQR(widget.classCode, docId);
-
-      if (mounted) {
-        setState(() {
-          _hasQRToday = false;
-          _todaysQRData = null;
-          _canCreateQR = true;
-        });
-      }
+      _classData = doc.data();
+      if (_classData != null) await _checkTodaysQR();
+    } catch (e) {
+      if (mounted) _showError("Error loading class: $e");
     }
+
+    if (mounted) setState(() => _isLoading = false);
   }
 
-  Future<Map<String, dynamic>?> getClassDetails() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('global')
-        .doc('classes')
-        .collection('allClasses')
-        .doc(widget.classCode)
-        .get();
-
-    final data = doc.data();
-    _classData = data;
-
-    // Check today's QR immediately after getting class data
-    if (!_hasCheckedTodaysQR && data != null) {
+  Future<void> _refreshData() async {
+    if (_classData != null) {
       await _checkTodaysQR();
-      _hasCheckedTodaysQR = true;
+      if (mounted) setState(() {});
     }
-
-    return data;
   }
 
   Future<void> _checkTodaysQR() async {
     if (_classData == null) return;
 
     try {
-      final section = _classData!['section'] ?? '';
-      final qrData = await QRManager.checkTodaysQR(widget.classCode, section);
-
-      if (qrData != null) {
-        // Valid QR exists
-        _hasQRToday = true;
-        _todaysQRData = qrData;
-        _canCreateQR = false;
-      } else {
-        // No valid QR found (either doesn't exist or was expired and deleted)
-        _hasQRToday = false;
-        _todaysQRData = null;
-        _canCreateQR = true;
-      }
-
-      if (mounted) {
-        setState(() {});
-      }
+      final qrData = await QRManager.checkTodaysQR(
+        widget.classCode,
+        _classData!['section'] ?? '',
+      );
+      _hasQRToday = qrData != null;
+      _todaysQRData = qrData;
+      _canCreateQR = !_hasQRToday;
     } catch (e) {
-      // On error, assume no QR exists and allow creation
       _hasQRToday = false;
       _todaysQRData = null;
       _canCreateQR = true;
-      if (mounted) {
-        setState(() {});
-      }
     }
   }
 
   Future<void> _createQR() async {
     if (_classData == null) return;
 
-    setState(() {
-      _isLoading = true;
-    });
-
-    final section = _classData!['section'] ?? '';
+    setState(() => _isCreatingQR = true);
 
     try {
-      // First check if there's an expired QR that needs cleanup
-      await _checkTodaysQR();
-
-      // Only proceed if we can create a QR
-      if (!_canCreateQR) {
-        setState(() {
-          _isLoading = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("A QR code already exists for today."),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
-
       final qrResult = await QRManager.createQR(
         classCode: widget.classCode,
-        section: section,
+        section: _classData!['section'] ?? '',
         expirationDuration: const Duration(minutes: 2),
       );
 
       if (qrResult != null) {
-        // Update local state
-        _hasQRToday = true;
-        _canCreateQR = false;
-        _todaysQRData = qrResult;
-
         setState(() {
-          _isLoading = false;
+          _hasQRToday = true;
+          _canCreateQR = false;
+          _todaysQRData = qrResult;
         });
 
-        // Navigate to QR display page
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => QRDisplayPage(
-              qrData: qrResult['qrString'] as String,
-              expiresAt: qrResult['expiresAt'] as DateTime,
+              qrData: qrResult['qrString'],
+              expiresAt: qrResult['expiresAt'],
               classCode: widget.classCode,
-              section: section,
+              section: _classData!['section'] ?? '',
             ),
           ),
         );
@@ -180,40 +122,19 @@ class _TeacherClassPageState extends State<TeacherClassPage> {
         throw Exception("Failed to create QR");
       }
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error creating QR: $e")));
+      _showError("Error creating QR: $e");
     }
+
+    setState(() => _isCreatingQR = false);
   }
 
-  void _viewQR() async {
+  Future<void> _viewQR() async {
     if (_todaysQRData == null || _classData == null) return;
 
-    // Check if QR is expired before viewing
     final expiresAt = _todaysQRData!['expiresAt'] as DateTime;
 
     if (QRManager.isQRExpired(expiresAt)) {
-      // QR is expired, clean it up
-      final docId = _todaysQRData!['docId'] as String;
-      await QRManager.deleteExpiredQR(widget.classCode, docId);
-
-      if (mounted) {
-        setState(() {
-          _hasQRToday = false;
-          _todaysQRData = null;
-          _canCreateQR = true;
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("QR code has expired. Please create a new one."),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
+      await _refreshData(); 
       return;
     }
 
@@ -238,6 +159,12 @@ class _TeacherClassPageState extends State<TeacherClassPage> {
     );
   }
 
+  void _showError(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -247,167 +174,189 @@ class _TeacherClassPageState extends State<TeacherClassPage> {
         title: const Text("Class Details"),
         centerTitle: true,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => _refreshData(),
+          ),
+        ],
       ),
-      body: FutureBuilder<Map<String, dynamic>?>(
-        future: getClassDetails(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _classData == null
+          ? const Center(child: Text("Class not found"))
+          : _buildContent(),
+    );
+  }
 
-          if (!snapshot.hasData || snapshot.data == null) {
-            return const Center(child: Text("Class not found"));
-          }
+  Widget _buildContent() {
+    final data = _classData!;
+    final name = data['name'] ?? 'Unknown';
+    final section = data['section'] ?? '';
+    final time = data['startTime'] ?? '';
 
-          final data = snapshot.data!;
-          final name = data['name'] ?? 'Unknown';
-          final section = data['section'] ?? '';
-          final time = data['startTime'] ?? '';
-          String formattedTime = time;
-          try {
-            final parsedTime = DateFormat("HH:mm").parse(time);
-            formattedTime = DateFormat.jm().format(parsedTime);
-          } catch (_) {}
+    String formattedTime = time;
+    try {
+      final parsedTime = DateFormat("HH:mm").parse(time);
+      formattedTime = DateFormat.jm().format(parsedTime);
+    } catch (_) {}
 
-          return Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildClassInfoCard(name, section, formattedTime),
+          const SizedBox(height: 30),
+
+          // QR Status Indicator
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              color: _hasQRToday
+                  ? Colors.green.shade100
+                  : Colors.orange.shade100,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _hasQRToday ? Colors.green : Colors.orange,
+              ),
+            ),
+            child: Row(
               children: [
-                // Class Info Card
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color.fromARGB(255, 0, 161, 115),
-                        Color.fromARGB(255, 0, 190, 140),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: .15),
-                        blurRadius: 10,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
+                Icon(
+                  _hasQRToday ? Icons.check_circle : Icons.info,
+                  color: _hasQRToday ? Colors.green : Colors.orange,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _hasQRToday ? "QR Active" : "No Active QR",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: _hasQRToday
+                        ? Colors.green.shade800
+                        : Colors.orange.shade800,
                   ),
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 250, 250, 250),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        "Section: $section",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 255, 255, 255),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        "Start Time: $formattedTime",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 255, 255, 255),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        "Class Code: ${widget.classCode}",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 255, 255, 255),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 40),
-
-                // QR Management Buttons
-                Row(
-                  children: [
-                    // Create QR Button
-                    Expanded(
-                      child: _buildActionButton(
-                        context,
-                        icon: Icons.qr_code,
-                        label: "Create QR",
-                        color: Colors.orange,
-                        onPressed: _canCreateQR && !_isLoading
-                            ? _createQR
-                            : null,
-                        enabled: _canCreateQR && !_isLoading,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    // View QR Button
-                    Expanded(
-                      child: _buildActionButton(
-                        context,
-                        icon: Icons.qr_code_2,
-                        label: "View QR",
-                        color: Colors.green,
-                        onPressed: _hasQRToday && !_isLoading ? _viewQR : null,
-                        enabled: _hasQRToday && !_isLoading,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
-                // Other Buttons
-                _buildActionButton(
-                  context,
-                  icon: Icons.timer,
-                  label: "Take Attendance",
-                  color: const Color.fromARGB(255, 0, 161, 115),
-                  onPressed: () {
-                    // TODO: Start Attendance
-                  },
-                ),
-                const SizedBox(height: 20),
-                _buildActionButton(
-                  context,
-                  icon: Icons.list_alt,
-                  label: "Show Attendance",
-                  color: Colors.blue,
-                  onPressed: () {
-                    // TODO: Show Attendance
-                  },
                 ),
               ],
             ),
-          );
-        },
+          ),
+
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: _buildActionButton(
+                  icon: Icons.qr_code,
+                  label: "Create QR",
+                  color: Colors.orange,
+                  onPressed: _canCreateQR && !_isCreatingQR ? _createQR : null,
+                  isLoading: _isCreatingQR,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildActionButton(
+                  icon: Icons.qr_code_2,
+                  label: "View QR",
+                  color: Colors.green,
+                  onPressed: _hasQRToday ? _viewQR : null,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          _buildActionButton(
+            icon: Icons.list_alt,
+            label: "Show Attendance",
+            color: Colors.blue,
+            onPressed: () {
+              // TODO: show attendance 
+            },
+          ),
+          const SizedBox(height: 20),
+          _buildActionButton(
+            icon: Icons.timer,
+            label: "Attendance History",
+            color: const Color.fromARGB(255, 0, 161, 115),
+            onPressed: () {
+              // TODO: Show attendance history
+            },
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildActionButton(
-    BuildContext context, {
+  Widget _buildClassInfoCard(
+    String name,
+    String section,
+    String formattedTime,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          colors: [
+            Color.fromARGB(255, 0, 161, 115),
+            Color.fromARGB(255, 0, 190, 140),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .15),
+            blurRadius: 10,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            name,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Color.fromARGB(255, 250, 250, 250),
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...[
+            "Section: $section",
+            "Start Time: $formattedTime",
+            "Class Code: ${widget.classCode}",
+          ].map(
+            (text) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
     required IconData icon,
     required String label,
     required Color color,
     required VoidCallback? onPressed,
-    bool? enabled,
+    bool isLoading = false,
   }) {
-    final isEnabled = enabled ?? (onPressed != null);
+    final isEnabled = onPressed != null;
 
     return ElevatedButton.icon(
       onPressed: onPressed,
-      icon: _isLoading && onPressed != null
+      icon: isLoading
           ? const SizedBox(
               width: 20,
               height: 20,

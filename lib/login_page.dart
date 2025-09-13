@@ -139,6 +139,7 @@ class _LoginState extends State<Login> {
       appBar: AppBar(
         backgroundColor: const Color.fromARGB(255, 0, 161, 115),
         title: const Text('Login'),
+        actions: [CustomMenuButton()],
         elevation: 0,
       ),
       body: SafeArea(

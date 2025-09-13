@@ -34,7 +34,7 @@ class _TeacherClassPageState extends State<TeacherClassPage> {
     super.initState();
     _loadData();
     _refreshTimer = Timer.periodic(
-      const Duration(minutes: 2),// refreash time 
+      const Duration(minutes: 1),// refreash time 
       (_) => _refreshData(),
     );
   }

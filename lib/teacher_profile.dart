@@ -1,3 +1,4 @@
+import 'package:basic_flutter/sub_pages/device_id.dart';
 import 'package:basic_flutter/teacher_class_details.dart';
 import 'package:basic_flutter/sub_pages/firebase_options.dart';
 import 'package:basic_flutter/sub_pages/menu_button.dart';
@@ -54,212 +55,250 @@ class TeacherProfile extends StatelessWidget {
               }
 
               final userData = userSnapshot.data!.data()!;
-              final name = userData['name'] ?? '';
-              final userId = FirebaseAuth.instance.currentUser!.uid;
-              final teacherId = userData['studentId'] ?? 'Not updated';
-              final designation = userData['section'] ?? '';
-              final verifiedTeacher = userData['verified'] ?? false;
+              final savedDeviceId = userData['DeviceId'] ?? '';
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: ProfileCard(
-                      name: name,
-                      id: teacherId,
-                      secondLine: "Designation: $designation",
-                      verified: verifiedTeacher,
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).pushNamed(createclass);
-                      },
-                      icon: const Icon(Icons.add),
-                      label: const Text("Create Class"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color.fromARGB(255, 0, 161, 115),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+              // 🔥 Device check with FutureBuilder
+              return FutureBuilder<String?>(
+                future: getAndroidDeviceId(),
+                builder: (context, deviceSnapshot) {
+                  if (deviceSnapshot.connectionState ==
+                      ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final currentDeviceId = deviceSnapshot.data ?? '';
+
+                  if (savedDeviceId.isNotEmpty &&
+                      currentDeviceId.isNotEmpty &&
+                      savedDeviceId != currentDeviceId) {
+                    // 🚨 Different device → force logout
+                    FirebaseAuth.instance.signOut();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      Navigator.of(
+                        context,
+                      ).pushNamedAndRemoveUntil(login, (route) => false);
+                    });
+                    return const SizedBox.shrink();
+                  }
+
+                  // ✅ Continue with profile UI
+                  final name = userData['name'] ?? '';
+                  final userId = FirebaseAuth.instance.currentUser!.uid;
+                  final teacherId = userData['studentId'] ?? 'Not updated';
+                  final designation = userData['section'] ?? '';
+                  final verifiedTeacher = userData['verified'] ?? false;
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: ProfileCard(
+                          name: name,
+                          id: teacherId,
+                          secondLine: "Designation: $designation",
+                          verified: verifiedTeacher,
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
-                    child: Text(
-                      "Your Classes",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // 🔥 Class List from nested collection
-                  Expanded(
-                    child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                      stream: getClassesStream(userId),
-                      builder: (context, classSnapshot) {
-                        if (classSnapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        }
-
-                        final classes = classSnapshot.data?.docs ?? [];
-                        if (classes.isEmpty) {
-                          return const Center(
-                            child: Text(
-                              "No classes created yet",
-                              style: TextStyle(
-                                color: Color.fromARGB(255, 80, 80, 80),
-                              ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pushNamed(createclass);
+                          },
+                          icon: const Icon(Icons.add),
+                          label: const Text("Create Class"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color.fromARGB(
+                              255,
+                              0,
+                              161,
+                              115,
                             ),
-                          );
-                        }
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20),
+                        child: Text(
+                          "Your Classes",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
 
-                        // 🔽 Sort classes by startTime (ascending)
-                        classes.sort((a, b) {
-                          final aTime = a['startTime'] ?? '';
-                          final bTime = b['startTime'] ?? '';
-                          try {
-                            final aParsed = DateFormat(
-                              "HH:mm",
-                            ).parse(aTime.toString());
-                            final bParsed = DateFormat(
-                              "HH:mm",
-                            ).parse(bTime.toString());
-                            return aParsed.compareTo(bParsed);
-                          } catch (_) {
-                            return 0;
-                          }
-                        });
-
-                        return ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          itemCount: classes.length,
-                          itemBuilder: (context, index) {
-                            final classData = classes[index].data();
-
-                            // Format time
-                            String formattedTime = '';
-                            if (classData['startTime'] != null) {
-                              try {
-                                final parsedTime = DateFormat(
-                                  "HH:mm",
-                                ).parse(classData['startTime']);
-                                formattedTime = DateFormat.jm().format(
-                                  parsedTime,
-                                );
-                              } catch (_) {
-                                formattedTime = classData['startTime'];
-                              }
+                      // 🔥 Class List from nested collection
+                      Expanded(
+                        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                          stream: getClassesStream(userId),
+                          builder: (context, classSnapshot) {
+                            if (classSnapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const Center(
+                                child: CircularProgressIndicator(),
+                              );
                             }
 
-                            return Card(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                side: const BorderSide(
-                                  color: Color.fromARGB(255, 0, 161, 115),
-                                  width: 2,
+                            final classes = classSnapshot.data?.docs ?? [];
+                            if (classes.isEmpty) {
+                              return const Center(
+                                child: Text(
+                                  "No classes created yet",
+                                  style: TextStyle(
+                                    color: Color.fromARGB(255, 80, 80, 80),
+                                  ),
                                 ),
-                              ),
-                              margin: const EdgeInsets.symmetric(vertical: 8),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(16),
-                                onTap: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (context) => TeacherClassPage(
-                                        classCode:
-                                            classData['code'], // code stored in Firestore
-                                        userId: userId, // current teacher uid
-                                      ),
-                                    ),
-                                  );
-                                },
+                              );
+                            }
 
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16.0),
-                                  child: Stack(
-                                    children: [
-                                      Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            classData['name'] ?? '',
-                                            style: const TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                            ),
+                            // 🔽 Sort classes by startTime (ascending)
+                            classes.sort((a, b) {
+                              final aTime = a['startTime'] ?? '';
+                              final bTime = b['startTime'] ?? '';
+                              try {
+                                final aParsed = DateFormat(
+                                  "HH:mm",
+                                ).parse(aTime.toString());
+                                final bParsed = DateFormat(
+                                  "HH:mm",
+                                ).parse(bTime.toString());
+                                return aParsed.compareTo(bParsed);
+                              } catch (_) {
+                                return 0;
+                              }
+                            });
+
+                            return ListView.builder(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                              ),
+                              itemCount: classes.length,
+                              itemBuilder: (context, index) {
+                                final classData = classes[index].data();
+
+                                // Format time
+                                String formattedTime = '';
+                                if (classData['startTime'] != null) {
+                                  try {
+                                    final parsedTime = DateFormat(
+                                      "HH:mm",
+                                    ).parse(classData['startTime']);
+                                    formattedTime = DateFormat.jm().format(
+                                      parsedTime,
+                                    );
+                                  } catch (_) {
+                                    formattedTime = classData['startTime'];
+                                  }
+                                }
+
+                                return Card(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    side: const BorderSide(
+                                      color: Color.fromARGB(255, 0, 161, 115),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  margin: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(16),
+                                    onTap: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (context) => TeacherClassPage(
+                                            classCode:
+                                                classData['code'], // code stored in Firestore
+                                            userId:
+                                                userId, // current teacher uid
                                           ),
-                                          const SizedBox(height: 8),
-                                          Wrap(
-                                            spacing: 8,
-                                            runSpacing: 4,
+                                        ),
+                                      );
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16.0),
+                                      child: Stack(
+                                        children: [
+                                          Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             children: [
-                                              Chip(
-                                                label: Text(
-                                                  'Section: ${classData['section'] ?? ''}',
-                                                ),
-                                                backgroundColor:
-                                                    Colors.green.shade50,
-                                                labelStyle: const TextStyle(
-                                                  color: Colors.green,
+                                              Text(
+                                                classData['name'] ?? '',
+                                                style: const TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
                                                 ),
                                               ),
-                                              Chip(
-                                                label: Text(
-                                                  'Code: ${classData['code'] ?? ''}',
-                                                ),
-                                                backgroundColor:
-                                                    Colors.blue.shade50,
-                                                labelStyle: const TextStyle(
-                                                  color: Colors.blue,
-                                                ),
+                                              const SizedBox(height: 8),
+                                              Wrap(
+                                                spacing: 8,
+                                                runSpacing: 4,
+                                                children: [
+                                                  Chip(
+                                                    label: Text(
+                                                      'Section: ${classData['section'] ?? ''}',
+                                                    ),
+                                                    backgroundColor:
+                                                        Colors.green.shade50,
+                                                    labelStyle: const TextStyle(
+                                                      color: Colors.green,
+                                                    ),
+                                                  ),
+                                                  Chip(
+                                                    label: Text(
+                                                      'Code: ${classData['code'] ?? ''}',
+                                                    ),
+                                                    backgroundColor:
+                                                        Colors.blue.shade50,
+                                                    labelStyle: const TextStyle(
+                                                      color: Colors.blue,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ],
                                           ),
-                                        ],
-                                      ),
-                                      if (formattedTime.isNotEmpty)
-                                        Positioned(
-                                          top: 0,
-                                          right: 0,
-                                          child: Text(
-                                            formattedTime,
-                                            style: const TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.bold,
-                                              color: Color.fromARGB(
-                                                226,
-                                                188,
-                                                3,
-                                                3,
+                                          if (formattedTime.isNotEmpty)
+                                            Positioned(
+                                              top: 0,
+                                              right: 0,
+                                              child: Text(
+                                                formattedTime,
+                                                style: const TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Color.fromARGB(
+                                                    226,
+                                                    188,
+                                                    3,
+                                                    3,
+                                                  ),
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                        ),
-                                    ],
+                                        ],
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
+                                );
+                              },
                             );
                           },
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
               );
             },
           );

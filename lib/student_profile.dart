@@ -1,8 +1,10 @@
 import 'package:basic_flutter/student_class_details.dart';
+import 'package:basic_flutter/sub_pages/device_id.dart';
 import 'package:basic_flutter/sub_pages/firebase_options.dart';
 import 'package:basic_flutter/sub_pages/menu_button.dart';
 import 'package:basic_flutter/sub_pages/profile_card.dart';
 import 'package:basic_flutter/sub_pages/qr_scanner/scanner.dart';
+import 'package:basic_flutter/sub_pages/routes.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -149,166 +151,198 @@ class StudentProfile extends StatelessWidget {
                   final section = userData['section'] ?? '';
                   final verifiedStudent = userData['verified'] ?? false;
 
-                  return SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // --- Profile Card ---
-                        ProfileCard(
-                          name: name,
-                          id: studentId,
-                          secondLine: "Section: $section",
-                          verified: verifiedStudent,
-                        ),
+                  // Device check (async fix)
+                  return FutureBuilder<String>(
+                    future: getAndroidDeviceId(),
+                    builder: (context, deviceSnapshot) {
+                      if (deviceSnapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                        const SizedBox(height: 20),
+                      final loginDevice = deviceSnapshot.data ?? '';
+                      final deviceid = userData['DeviceId'] ?? '';
 
-                        // --- Buttons Row ---
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      if (loginDevice != deviceid) {
+                        FirebaseAuth.instance.signOut();
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          Navigator.of(
+                            context,
+                          ).pushNamedAndRemoveUntil(login, (route) => false);
+                        });
+                        return const SizedBox(); // empty widget while redirecting
+                      }
+
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () => _joinClass(context),
-                                icon: const Icon(Icons.add),
-                                label: const Text("Join Class"),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color.fromARGB(
-                                    255,
-                                    0,
-                                    161,
-                                    115,
-                                  ),
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
+                            // --- Profile Card ---
+                            ProfileCard(
+                              name: name,
+                              id: studentId,
+                              secondLine: "Section: $section",
+                              verified: verifiedStudent,
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (context) => const QrScanner(),
-                                    ),
-                                  );
-                                },
 
-                                icon: const Icon(Icons.qr_code_scanner),
-                                label: const Text("Scan QR"),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.deepPurple,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                            const SizedBox(height: 20),
 
-                        const SizedBox(height: 20),
-
-                        // --- Joined Classes List ---
-                        const Text(
-                          "Your Classes",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Fetch joined classes from Firestore
-                        StreamBuilder<QuerySnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection("users")
-                              .doc(FirebaseAuth.instance.currentUser!.uid)
-                              .collection("joinedClasses")
-                              .orderBy('startTime')
-                              .snapshots(),
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState ==
-                                ConnectionState.waiting) {
-                              return const Center(
-                                child: CircularProgressIndicator(),
-                              );
-                            }
-                            if (!snapshot.hasData ||
-                                snapshot.data!.docs.isEmpty) {
-                              return const Text("No classes joined yet.");
-                            }
-
-                            final docs = snapshot.data!.docs;
-
-                            return Column(
-                              children: docs.map((doc) {
-                                final data = doc.data() as Map<String, dynamic>;
-                                final className = data['name'] ?? '';
-                                final rawTime = data['startTime'] ?? '';
-                                String displayTime = rawTime;
-
-                                // Convert "HH:mm" -> "h:mm a"
-                                try {
-                                  final time = DateFormat(
-                                    "HH:mm",
-                                  ).parse(rawTime);
-                                  displayTime = DateFormat(
-                                    "h:mm a",
-                                  ).format(time);
-                                } catch (_) {
-                                  // fallback if parsing fails
-                                }
-
-                                return Card(
-                                  elevation: 3,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    side: const BorderSide(
-                                      color: Color.fromARGB(255, 0, 161, 115),
-                                      width: 2,
-                                    ),
-                                  ),
-                                  child: ListTile(
-                                    title: Text(
-                                      className,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
+                            // --- Buttons Row ---
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () => _joinClass(context),
+                                    icon: const Icon(Icons.add),
+                                    label: const Text("Join Class"),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color.fromARGB(
+                                        255,
+                                        0,
+                                        161,
+                                        115,
+                                      ),
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
                                     ),
-                                    subtitle: Text("Start Time: $displayTime"),
-                                    trailing: const Icon(
-                                      Icons.arrow_forward_ios,
-                                      size: 16,
-                                    ),
-                                    onTap: () {
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
                                       Navigator.of(context).push(
                                         MaterialPageRoute(
                                           builder: (context) =>
-                                              StudentClassPage(
-                                                classCode: data['code'],
-                                                userId: FirebaseAuth
-                                                    .instance
-                                                    .currentUser!
-                                                    .uid,
-                                              ),
+                                              const QrScanner(),
                                         ),
                                       );
                                     },
+                                    icon: const Icon(Icons.qr_code_scanner),
+                                    label: const Text("Scan QR"),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.deepPurple,
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
                                   ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 20),
+
+                            // --- Joined Classes List ---
+                            const Text(
+                              "Your Classes",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Fetch joined classes from Firestore
+                            StreamBuilder<QuerySnapshot>(
+                              stream: FirebaseFirestore.instance
+                                  .collection("users")
+                                  .doc(FirebaseAuth.instance.currentUser!.uid)
+                                  .collection("joinedClasses")
+                                  .orderBy('startTime')
+                                  .snapshots(),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState ==
+                                    ConnectionState.waiting) {
+                                  return const Center(
+                                    child: CircularProgressIndicator(),
+                                  );
+                                }
+                                if (!snapshot.hasData ||
+                                    snapshot.data!.docs.isEmpty) {
+                                  return const Text("No classes joined yet.");
+                                }
+
+                                final docs = snapshot.data!.docs;
+
+                                return Column(
+                                  children: docs.map((doc) {
+                                    final data =
+                                        doc.data() as Map<String, dynamic>;
+                                    final className = data['name'] ?? '';
+                                    final rawTime = data['startTime'] ?? '';
+                                    String displayTime = rawTime;
+
+                                    // Convert "HH:mm" -> "h:mm a"
+                                    try {
+                                      final time = DateFormat(
+                                        "HH:mm",
+                                      ).parse(rawTime);
+                                      displayTime = DateFormat(
+                                        "h:mm a",
+                                      ).format(time);
+                                    } catch (_) {
+                                      // fallback if parsing fails
+                                    }
+
+                                    return Card(
+                                      elevation: 3,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        side: const BorderSide(
+                                          color: Color.fromARGB(
+                                            255,
+                                            0,
+                                            161,
+                                            115,
+                                          ),
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: ListTile(
+                                        title: Text(
+                                          className,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 18,
+                                          ),
+                                        ),
+                                        subtitle: Text(
+                                          "Start Time: $displayTime",
+                                        ),
+                                        trailing: const Icon(
+                                          Icons.arrow_forward_ios,
+                                          size: 16,
+                                        ),
+                                        onTap: () {
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  StudentClassPage(
+                                                    classCode: data['code'],
+                                                    userId: FirebaseAuth
+                                                        .instance
+                                                        .currentUser!
+                                                        .uid,
+                                                  ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    );
+                                  }).toList(),
                                 );
-                              }).toList(),
-                            );
-                          },
+                              },
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   );
                 },
               );
